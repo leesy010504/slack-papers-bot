@@ -23,12 +23,14 @@ GitHub Actions 스케줄러가 매일 아침 실행하는 스크립트.
 import os
 import sys
 
+from dotenv import load_dotenv
 from papers import build_blocks, fetch_papers
 from slack_client import post_message
 
+load_dotenv()
+
 CHANNEL = os.environ.get("SLACK_CHANNEL", "#ai-papers")
 TOP_N = int(os.environ.get("TOP_N", "3"))
-
 
 # 논문을 수집해 Slack에 발송한다.
 def main():
