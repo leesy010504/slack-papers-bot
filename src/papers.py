@@ -1,8 +1,24 @@
-"""HF Daily Papers 수집 · 요약 · Slack 블록 변환.
-
-발송 진입점(send.py)과 분리해 두었다.
-나중에 슬래시 커맨드 등 다른 진입점이 생겨도 이 모듈을 그대로 재사용한다.
-"""
+#
+# send -- 일일 논문 발송 진입점
+#
+# GitHub Actions 스케줄러가 매일 아침 실행하는 스크립트.
+# 논문을 가져와 요약하고 Slack에 발송한 뒤 결과를 표준출력에 남긴다.
+# 실패 시 exit code 1을 반환해 워크플로가 실패로 표시되도록 한다.
+#
+# 작성자: 이상윤
+#
+# 환경변수
+#   SLACK_BOT_TOKEN    -- (필수) Bot User OAuth Token
+#   ANTHROPIC_API_KEY  -- (선택) 없으면 요약 없이 초록 일부만 발송
+#   SLACK_CHANNEL      -- (선택) 기본값 #ai-papers
+#   TOP_N              -- (선택) 발송할 논문 수, 기본값 3
+#
+# 구성
+#   main  -- 수집 -> 변환 -> 발송 순서로 실행
+#
+# 변경내역
+#   2026-07-24  최초 작성
+#
 
 import os
 
@@ -20,17 +36,15 @@ SUMMARY_PROMPT = (
     "제목: {title}\n초록: {abstract}"
 )
 
-
+# 피드에서 최신 논문 n편을 가져온다.
 def fetch_papers(n=3):
-    """피드에서 최신 논문 n편을 가져온다."""
     feed = feedparser.parse(FEED_URL)
     if feed.bozo and not feed.entries:
         raise RuntimeError(f"피드 파싱 실패: {feed.bozo_exception}")
     return feed.entries[:n]
 
-
+# 초록을 한국어로 요약한다. API 키가 없으면 원문을 잘라서 반환한다.
 def summarize(title, abstract):
-    """초록을 한국어로 요약한다. API 키가 없으면 원문을 잘라서 반환."""
     key = os.environ.get("ANTHROPIC_API_KEY")
     if not key:
         return abstract[:300].strip()
@@ -58,13 +72,11 @@ def summarize(title, abstract):
         res.raise_for_status()
         return res.json()["content"][0]["text"].strip()
     except Exception as e:
-        # 요약이 실패해도 발송 자체는 계속한다
         print(f"[warn] 요약 실패 ({title[:40]}...): {e}")
         return abstract[:300].strip()
 
-
+# 논문 목록을 Slack Block Kit 형식으로 변환한다.
 def build_blocks(entries):
-    """논문 목록을 Slack Block Kit 형식으로 변환한다."""
     blocks = [{
         "type": "header",
         "text": {"type": "plain_text", "text": "오늘의 AI 논문"},
