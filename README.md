@@ -1,6 +1,7 @@
 # Daily Papers Bot
 
-Hugging Face Daily Papers 상위 3편을 한국어로 요약해 매일 아침 Slack에 보냅니다.
+개발 블로그(당근, Cloudflare, 네이버 D2, 우아한형제들, Simon Willison, Hugging Face,
+데보션 등) 최신 글을 한국어로 요약해 평일 아침(KST) Slack에 보냅니다.
 
 ## 구조
 
@@ -26,19 +27,19 @@ Settings → Secrets and variables → Actions
 | 이름 | 값 |
 | --- | --- |
 | `SLACK_BOT_TOKEN` | `xoxb-...` |
-| `ANTHROPIC_API_KEY` | `sk-ant-...` (없으면 요약 없이 초록 일부 발송) |
+| `GEMINI_API_KEY` | Gemini API 키 (없으면 요약 없이 본문 일부 발송) |
 
 ## 로컬 실행
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements
 
 export SLACK_BOT_TOKEN="xoxb-..."
-export ANTHROPIC_API_KEY="sk-ant-..."
+export GEMINI_API_KEY="..."
 export SLACK_CHANNEL="#ai-papers"
 
-python send.py
+python src/send.py
 ```
 
 ## 배포 후 확인

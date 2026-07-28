@@ -12,6 +12,7 @@
 #
 # 변경내역
 #   2026-07-24  최초 작성
+#   2026-07-26  글 링크 언퍼널(자동 미리보기) 비활성화
 #
 
 import os
@@ -29,6 +30,9 @@ def post_message(channel, blocks, fallback_text, thread_ts=None):
         "channel": channel,
         "text": fallback_text,
         "blocks": blocks,
+        # 글 링크마다 큰 미리보기 카드가 붙어 메시지가 늘어지는 걸 막는다.
+        "unfurl_links": False,
+        "unfurl_media": False,
     }
     if thread_ts:
         payload["thread_ts"] = thread_ts
