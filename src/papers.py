@@ -35,6 +35,7 @@ import html
 import json
 import os
 import re
+import time
 from datetime import datetime, timedelta, timezone
 
 import feedparser
@@ -67,6 +68,11 @@ SOURCES = [
 # Slack 메시지당 블록 수 상한(50)에 안전 마진을 두고, 소스가 늘어나거나
 # 특정 소스가 그날 유독 많이 올려도 메시지가 깨지지 않게 한다.
 MAX_POSTS = 20
+
+# Gemini 무료 티어 분당 요청 수 한도(약 15RPM 추정)에 안 걸리게 요약 호출
+# 사이에 두는 최소 간격. 짧은 시간에 호출이 몰리면 즉시 에러 대신 응답이
+# 멈춰버려(Read timeout) 원인 파악이 어려우니, 애초에 몰리지 않게 막는다.
+SUMMARIZE_INTERVAL_SECONDS = 4
 
 CATEGORIES = ["보안", "AI", "인프라", "백엔드", "프론트엔드", "기타"]
 
@@ -331,12 +337,16 @@ def format_summary(text):
 # 발송 파이프라인 초반에 한 번만 호출한다. 뉴스 다이제스트(region == "news")는
 # 이미 완성된 항목이라 카테고리 개념이 없어 건너뛴다.
 def enrich_posts(posts):
+    called = False
     for post in posts:
         if post["region"] == "news":
             continue
+        if called:
+            time.sleep(SUMMARIZE_INTERVAL_SECONDS)
         result = summarize(post["title"], post["text"])
         post["summary"] = format_summary(result["summary"])
         post["category"] = result["category"]
+        called = True
     return posts
 
 
