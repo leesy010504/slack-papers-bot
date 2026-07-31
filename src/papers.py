@@ -27,11 +27,15 @@
 #               블로그 글엔 과해서 문장 단위 불릿 요약으로 되돌림
 #   2026-07-26  평일 아침에만 실행하는 걸 전제로, KST 날짜 일치 대신 시차를
 #               고려한 lookback 윈도우로 수집 기준 변경 (주말 시차 유실 방지)
+#   2026-07-31  글마다 주제 분류(보안/AI/인프라/백엔드/프론트엔드/기타) 추가.
+#               별도 API 호출 없이 기존 요약 호출에 얹어 응답
 #
 
 import html
+import json
 import os
 import re
+import time
 from datetime import datetime, timedelta, timezone
 
 import feedparser
@@ -65,12 +69,52 @@ SOURCES = [
 # 특정 소스가 그날 유독 많이 올려도 메시지가 깨지지 않게 한다.
 MAX_POSTS = 20
 
+# Gemini 무료 티어 분당 요청 수 한도(약 15RPM 추정)에 안 걸리게 요약 호출
+# 사이에 두는 최소 간격. 짧은 시간에 호출이 몰리면 즉시 에러 대신 응답이
+# 멈춰버려(Read timeout) 원인 파악이 어려우니, 애초에 몰리지 않게 막는다.
+SUMMARIZE_INTERVAL_SECONDS = 4
+
+CATEGORIES = ["보안", "AI", "인프라", "백엔드", "프론트엔드", "기타"]
+
+# Gemini가 지정한 6개 라벨을 벗어나 답할 때(영문 표기, 유사어 등) 그나마
+# 흔한 변형만 매핑해 보정한다. 그 외는 전부 "기타"로 떨어뜨린다.
+CATEGORY_ALIASES = {
+    "security": "보안",
+    "ai": "AI",
+    "ml": "AI",
+    "머신러닝": "AI",
+    "인공지능": "AI",
+    "infra": "인프라",
+    "infrastructure": "인프라",
+    "devops": "인프라",
+    "backend": "백엔드",
+    "be": "백엔드",
+    "frontend": "프론트엔드",
+    "fe": "프론트엔드",
+    "etc": "기타",
+    "other": "기타",
+}
+
 SUMMARY_PROMPT = (
-    "다음 개발 블로그 글의 핵심 내용을 한국어 한 문장으로 요약해줘. "
-    "존댓말로 쓰고 '~글입니다'처럼 명사형 어미로 끝내줘. "
-    "요약문만 출력하고 다른 말은 하지 마.\n\n"
+    "다음 개발 블로그 글을 분석해서 아래 JSON 형식으로만 답해줘. "
+    "설명이나 코드블록 없이 JSON 객체 하나만 출력해.\n"
+    '{{"summary": "핵심 내용을 담은 한국어 한 문장. 존댓말로 쓰고 '
+    "'~글입니다'처럼 명사형 어미로 끝낼 것\", "
+    '"category": "보안, AI, 인프라, 백엔드, 프론트엔드, 기타 중 가장 알맞은 하나"}}\n\n'
     "제목: {title}\n내용: {content}"
 )
+
+
+# Gemini가 반환한 카테고리 문자열을 CATEGORIES 중 하나로 정규화한다.
+# 정해진 6개 라벨과 정확히 일치하지 않으면 흔한 별칭을 시도하고, 그래도
+# 못 찾으면 "기타"로 떨어뜨려 항상 유효한 라벨만 노출되게 한다.
+def _normalize_category(raw):
+    if not raw:
+        return "기타"
+    raw = raw.strip()
+    if raw in CATEGORIES:
+        return raw
+    return CATEGORY_ALIASES.get(raw.lower(), "기타")
 
 # 데보션의 NEWS(일일 다이제스트)/DEVOTEE(자동 생성 트렌드) 탭은 rss.do
 # 피드에 아예 포함되지 않는다(BLOG 탭 개인 작성 글만 내려옴). 별도 API도
@@ -227,16 +271,18 @@ def fetch_recent_posts():
     return (domestic_posts + international_posts + news_posts)[:MAX_POSTS]
 
 
-# 본문을 한국어로 요약한다. 본문이 없으면 요약을 만들지 않고 빈 문자열을
-# 반환한다(제목/링크만 있는 카드로 표시됨). 키가 없거나 호출이 실패하면
-# 본문 일부를 잘라서 반환한다.
+# 본문을 한국어로 요약하고 주제 카테고리를 분류한다. 항상
+# {"summary": str, "category": str} 형태로 반환하며, category는 항상
+# CATEGORIES 중 하나다. 본문이 없으면 둘 다 만들지 않고 요약은 빈 문자열,
+# 카테고리는 "기타"로 반환한다. 키가 없거나 호출이 실패하면 본문 일부를
+# 요약으로 쓰고 카테고리는 "기타"로 떨어뜨린다.
 def summarize(title, text):
     if not text:
-        return ""
+        return {"summary": "", "category": "기타"}
 
     key = os.environ.get("GEMINI_API_KEY")
     if not key:
-        return text[:200].strip()
+        return {"summary": text[:200].strip(), "category": "기타"}
 
     # 모듈 로드 시점이 아니라 호출 시점에 읽는다.
     # 상수로 두면 load_dotenv()보다 import가 먼저 실행될 때 기본값이 박힌다.
@@ -256,7 +302,7 @@ def summarize(title, text):
                         "text": SUMMARY_PROMPT.format(title=title, content=text)
                     }]
                 }],
-                "generationConfig": {"maxOutputTokens": 300},
+                "generationConfig": {"maxOutputTokens": 300, "responseMimeType": "application/json"},
             },
             timeout=60,
         )
@@ -268,10 +314,15 @@ def summarize(title, text):
         if not candidates:
             raise RuntimeError(f"응답에 candidates 없음: {data}")
 
-        return candidates[0]["content"]["parts"][0]["text"].strip()
+        raw = candidates[0]["content"]["parts"][0]["text"].strip()
+        parsed = json.loads(raw)
+        return {
+            "summary": (parsed.get("summary") or "").strip(),
+            "category": _normalize_category(parsed.get("category")),
+        }
     except Exception as e:
         print(f"[warn] 요약 실패 ({title[:40]}...): {e}")
-        return text[:200].strip()
+        return {"summary": text[:200].strip(), "category": "기타"}
 
 
 # 요약문을 한 줄로 다듬는다. 모델이 개행을 넣어 보내는 경우가 있어 공백으로 합친다.
@@ -279,6 +330,24 @@ def format_summary(text):
     if not text:
         return ""
     return " ".join(text.split())
+
+
+# posts 각각에 summary/category를 채워 넣는다. build_blocks와 구독 필터링
+# (subscriptions.py)이 같은 요약 결과를 공유해 Gemini를 중복 호출하지 않게
+# 발송 파이프라인 초반에 한 번만 호출한다. 뉴스 다이제스트(region == "news")는
+# 이미 완성된 항목이라 카테고리 개념이 없어 건너뛴다.
+def enrich_posts(posts):
+    called = False
+    for post in posts:
+        if post["region"] == "news":
+            continue
+        if called:
+            time.sleep(SUMMARIZE_INTERVAL_SECONDS)
+        result = summarize(post["title"], post["text"])
+        post["summary"] = format_summary(result["summary"])
+        post["category"] = result["category"]
+        called = True
+    return posts
 
 
 # 어떤 블로그를 모니터링 중인지 안내하는 context 블록.
@@ -342,7 +411,9 @@ def build_blocks(posts):
             if post["region"] == "news":
                 text = header
             else:
-                summary = format_summary(summarize(post["title"], post["text"]))
+                category = post.get("category", "기타")
+                summary = post.get("summary", "")
+                header = f"{header}  `{category}`"
                 text = f"{header}\n\n{summary}" if summary else header
             blocks.append({
                 "type": "section",
