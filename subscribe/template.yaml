@@ -1,0 +1,51 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Slack /구독 슬래시 커맨드 처리 및 구독 정보 저장
+
+Parameters:
+  SlackSigningSecret:
+    Type: String
+    NoEcho: true
+    Description: Slack 앱 Basic Information의 Signing Secret
+
+Globals:
+  Function:
+    Timeout: 10
+    Runtime: python3.11
+    MemorySize: 128
+
+Resources:
+  SubscriptionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: user_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: user_id
+          KeyType: HASH
+
+  SubscribeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: app.lambda_handler
+      Environment:
+        Variables:
+          SLACK_SIGNING_SECRET: !Ref SlackSigningSecret
+          TABLE_NAME: !Ref SubscriptionsTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SubscriptionsTable
+      Events:
+        Subscribe:
+          Type: Api
+          Properties:
+            Path: /slack/subscribe
+            Method: post
+
+Outputs:
+  SubscribeApiUrl:
+    Description: Slack 슬래시 커맨드 Request URL로 등록할 주소
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/slack/subscribe"
