@@ -44,7 +44,7 @@ python src/send.py
 
 ## 배포 후 확인
 
-Actions 탭 → `Daily Papers to Slack` → **Run workflow**로 수동 실행해 검증한다.
+Actions 탭 → `Daily Papers to Slack` → **Run workflow**로 수동 실행해 검증합니다.
 
 ## 참고
 
