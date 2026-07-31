@@ -43,6 +43,13 @@ import requests
 
 GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 
+# feedparser 기본 요청엔 User-Agent가 없어 일부 소스(예: 우아한형제들,
+# Cloudflare 뒤에 있음)가 봇으로 간주해 403으로 막는다. 브라우저처럼
+# 보이는 User-Agent를 붙여 우회한다.
+FEED_REQUEST_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+}
+
 # 모델 세대가 자주 교체되므로 버전 없는 -latest 별칭을 기본으로 둔다.
 # 404나 429 limit:0 이 뜨면 사용 가능한 모델 목록을 확인할 것
 # https://ai.google.dev/gemini-api/docs/models
@@ -240,7 +247,7 @@ def fetch_recent_posts():
     }
 
     for source in SOURCES:
-        feed = feedparser.parse(source["feed"])
+        feed = feedparser.parse(source["feed"], request_headers=FEED_REQUEST_HEADERS)
         if feed.bozo and not feed.entries:
             print(f"[warn] 피드 파싱 실패 ({source['name']}): {feed.bozo_exception}")
             continue
