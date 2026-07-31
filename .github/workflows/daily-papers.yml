@@ -21,4 +21,4 @@ jobs:
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          SLACK_CHANNEL: ${{ vars.SLACK_CHANNEL }}
+          SLACK_CHANNEL: ${{ secrets.SLACK_CHANNEL }}
