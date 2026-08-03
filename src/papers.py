@@ -80,6 +80,12 @@ SOURCES = [
 # 특정 소스가 그날 유독 많이 올려도 메시지가 깨지지 않게 한다.
 MAX_POSTS = 20
 
+# 전체 글이 이 개수를 넘으면, 유독 자주 올리는 소스(PROLIFIC_SOURCE)의
+# 글부터 줄여서 다른 소스가 묻히지 않게 한다. 짧은 글부터 잘라 긴(더
+# 내용 있는) 글을 우선 남긴다.
+TOTAL_POSTS_SOFT_LIMIT = 15
+PROLIFIC_SOURCE = "Simon Willison"
+
 # 제목이 "condense-json 1.0"/"llm-mcp-client 0.1a0"처럼 버전 번호로 끝나면
 # 보통 자기 오픈소스 도구의 버전 공지지만, "Advancing the price-performance
 # frontier with GPT-5.6"처럼 다른 도구/모델을 분석하는 진짜 콘텐츠도 우연히
@@ -301,7 +307,26 @@ def fetch_recent_posts():
         except Exception as e:
             print(f"[warn] {source_label} 목록 수집 실패: {e}")
 
-    return (domestic_posts + international_posts + news_posts)[:MAX_POSTS]
+    combined = domestic_posts + international_posts + news_posts
+    combined = _trim_prolific_source(combined)
+    return combined[:MAX_POSTS]
+
+
+# 전체 글 수가 TOTAL_POSTS_SOFT_LIMIT을 넘으면, PROLIFIC_SOURCE(예: Simon
+# Willison)의 글 중 짧은 것부터 제거해 그 한도 안으로 맞춘다. 다른 소스는
+# 건드리지 않는다. PROLIFIC_SOURCE 글만으로는 한도를 못 맞추면(그 소스
+# 글이 적은 날) 있는 만큼만 자르고 끝낸다.
+def _trim_prolific_source(posts):
+    excess = len(posts) - TOTAL_POSTS_SOFT_LIMIT
+    if excess <= 0:
+        return posts
+
+    prolific = sorted(
+        (p for p in posts if p["source"] == PROLIFIC_SOURCE),
+        key=lambda p: len(p["text"]),
+    )
+    to_drop = {id(p) for p in prolific[:excess]}
+    return [p for p in posts if id(p) not in to_drop]
 
 
 # 본문을 한국어로 요약하고 주제 카테고리를 분류한다. 항상
