@@ -67,14 +67,32 @@ SOURCES = [
     {"name": "네이버 D2", "region": "domestic", "feed": "https://d2.naver.com/d2.atom", "url": "https://d2.naver.com/home"},
     {"name": "우아한형제들", "region": "domestic", "feed": "https://techblog.woowahan.com/feed/", "url": "https://techblog.woowahan.com/"},
     {"name": "데보션 블로그", "region": "domestic", "feed": "https://devocean.sk.com/blog/rss.do", "url": "https://devocean.sk.com/blog/index.do?p=BLOG"},
+    {"name": "카카오", "region": "domestic", "feed": "https://tech.kakao.com/feed", "url": "https://tech.kakao.com/blog"},
+    {"name": "올리브영", "region": "domestic", "feed": "https://oliveyoung.tech/rss.xml", "url": "https://oliveyoung.tech/"},
+    {"name": "KT Cloud", "region": "domestic", "feed": "https://tech.ktcloud.com/feed", "url": "https://tech.ktcloud.com/"},
     # 해외
     {"name": "Cloudflare", "region": "international", "feed": "https://blog.cloudflare.com/rss/", "url": "https://blog.cloudflare.com/"},
     {"name": "Simon Willison", "region": "international", "feed": "https://simonwillison.net/atom/everything/", "url": "https://simonwillison.net/"},
+    {"name": "라인야후", "region": "international", "feed": "https://techblog.lycorp.co.jp/ja/feed/index.xml", "url": "https://techblog.lycorp.co.jp/ja"},
 ]
 
 # Slack 메시지당 블록 수 상한(50)에 안전 마진을 두고, 소스가 늘어나거나
 # 특정 소스가 그날 유독 많이 올려도 메시지가 깨지지 않게 한다.
 MAX_POSTS = 20
+
+# 전체 글이 이 개수를 넘으면, 유독 자주 올리는 소스(PROLIFIC_SOURCE)의
+# 글부터 줄여서 다른 소스가 묻히지 않게 한다. 짧은 글부터 잘라 긴(더
+# 내용 있는) 글을 우선 남긴다.
+TOTAL_POSTS_SOFT_LIMIT = 15
+PROLIFIC_SOURCE = "Simon Willison"
+
+# 제목이 "condense-json 1.0"/"llm-mcp-client 0.1a0"처럼 버전 번호로 끝나면
+# 보통 자기 오픈소스 도구의 버전 공지지만, "Advancing the price-performance
+# frontier with GPT-5.6"처럼 다른 도구/모델을 분석하는 진짜 콘텐츠도 우연히
+# 버전 번호로 끝날 수 있다. 그래서 제목 패턴만으로 안 거르고, 본문까지 짧을
+# 때만(=진짜 한 줄 공지일 때만) 제외한다.
+VERSION_SUFFIX_RE = re.compile(r"\d+\.\d+[a-z]?\d*$")
+MIN_LENGTH_FOR_VERSIONED_TITLE = 1500
 
 # Gemini 무료 티어 분당 요청 수 한도(약 15RPM 추정)에 안 걸리게 요약 호출
 # 사이에 두는 최소 간격. 짧은 시간에 호출이 몰리면 즉시 에러 대신 응답이
@@ -82,6 +100,17 @@ MAX_POSTS = 20
 SUMMARIZE_INTERVAL_SECONDS = 4
 
 CATEGORIES = ["보안", "AI", "인프라", "백엔드", "프론트엔드", "기타"]
+
+# build_blocks에서 국내/해외 대신 주제별로 섹션을 나눌 때 쓰는 표시 라벨.
+# 소스는 국내/해외 상관없이 각 글 헤더의 [소스명]으로 이미 드러난다.
+CATEGORY_LABELS = {
+    "보안": "🔐 보안",
+    "AI": "🤖 AI",
+    "인프라": "🏗️ 인프라",
+    "백엔드": "⚙️ 백엔드",
+    "프론트엔드": "🎨 프론트엔드",
+    "기타": "📌 기타",
+}
 
 # Gemini가 지정한 6개 라벨을 벗어나 답할 때(영문 표기, 유사어 등) 그나마
 # 흔한 변형만 매핑해 보정한다. 그 외는 전부 "기타"로 떨어뜨린다.
@@ -258,12 +287,15 @@ def fetch_recent_posts():
             if entry_dt is None or entry_dt < window_start:
                 continue
             title = entry.get("title", "(제목 없음)")
+            text = _extract_text(entry)
+            if VERSION_SUFFIX_RE.search(title) and len(text) < MIN_LENGTH_FOR_VERSIONED_TITLE:
+                continue
             target.append({
                 "source": source["name"],
                 "region": source["region"],
                 "title": title,
                 "link": entry.get("link", ""),
-                "text": _extract_text(entry),
+                "text": text,
             })
 
     yesterday_kst = (now_kst - timedelta(days=1)).date()
@@ -275,7 +307,26 @@ def fetch_recent_posts():
         except Exception as e:
             print(f"[warn] {source_label} 목록 수집 실패: {e}")
 
-    return (domestic_posts + international_posts + news_posts)[:MAX_POSTS]
+    combined = domestic_posts + international_posts + news_posts
+    combined = _trim_prolific_source(combined)
+    return combined[:MAX_POSTS]
+
+
+# 전체 글 수가 TOTAL_POSTS_SOFT_LIMIT을 넘으면, PROLIFIC_SOURCE(예: Simon
+# Willison)의 글 중 짧은 것부터 제거해 그 한도 안으로 맞춘다. 다른 소스는
+# 건드리지 않는다. PROLIFIC_SOURCE 글만으로는 한도를 못 맞추면(그 소스
+# 글이 적은 날) 있는 만큼만 자르고 끝낸다.
+def _trim_prolific_source(posts):
+    excess = len(posts) - TOTAL_POSTS_SOFT_LIMIT
+    if excess <= 0:
+        return posts
+
+    prolific = sorted(
+        (p for p in posts if p["source"] == PROLIFIC_SOURCE),
+        key=lambda p: len(p["text"]),
+    )
+    to_drop = {id(p) for p in prolific[:excess]}
+    return [p for p in posts if id(p) not in to_drop]
 
 
 # 본문을 한국어로 요약하고 주제 카테고리를 분류한다. 항상
@@ -402,26 +453,24 @@ def build_blocks(posts):
     # 헤더/요약과 국내 섹션 사이 여백. Block Kit엔 빈 블록이 없어 공백 한 칸으로 대신한다.
     blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": " "}})
 
-    domestic = [p for p in posts if p["region"] == "domestic"]
-    international = [p for p in posts if p["region"] == "international"]
+    groups = []
+    for category in CATEGORIES:
+        group = [p for p in posts if p["region"] != "news" and p.get("category", "기타") == category]
+        if group:
+            groups.append((CATEGORY_LABELS[category], group))
     news = [p for p in posts if p["region"] == "news"]
+    if news:
+        groups.append(("📰 데보션 뉴스", news))
 
-    for label, group in (("🇰🇷 국내", domestic), ("🌍 해외", international), ("📰 데보션 뉴스", news)):
-        if not group:
-            continue
+    for label, group in groups:
         blocks.append({
             "type": "section",
             "text": {"type": "mrkdwn", "text": f"*{label} · {len(group)}편*"},
         })
         for post in group:
             header = f"*[{post['source']}] <{post['link']}|{post['title']}>*"
-            if post["region"] == "news":
-                text = header
-            else:
-                category = post.get("category", "기타")
-                summary = post.get("summary", "")
-                header = f"{header}  `{category}`"
-                text = f"{header}\n\n{summary}" if summary else header
+            summary = post.get("summary", "")
+            text = f"{header}\n\n{summary}" if summary else header
             blocks.append({
                 "type": "section",
                 "text": {"type": "mrkdwn", "text": text},

@@ -2,7 +2,7 @@ name: Daily Papers to Slack
 
 on:
   schedule:
-    - cron: "0 23 * * 0-4"
+    - cron: "0 22 * * 0-4"
   workflow_dispatch: {}
 
 jobs:
