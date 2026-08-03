@@ -24,7 +24,10 @@ VALID_KINDS = {"주제": "topics", "소스": "sources"}
 # papers.py의 CATEGORIES / SOURCES와 맞춘 값 + "전체". 데보션 블로그/트렌드/뉴스는
 # 전부 같은 소스라 구독 단위에서는 "데보션" 하나로 묶는다.
 TOPICS = ["보안", "AI", "인프라", "백엔드", "프론트엔드", "기타", "전체"]
-SOURCES = ["당근", "네이버 D2", "우아한형제들", "데보션", "Cloudflare", "Simon Willison", "전체"]
+SOURCES = [
+    "당근", "네이버 D2", "우아한형제들", "데보션", "카카오", "올리브영", "KT Cloud",
+    "Cloudflare", "Simon Willison", "라인야후", "전체",
+]
 VALID_VALUES = {
     "topics": {v.lower(): v for v in TOPICS},
     "sources": {v.lower(): v for v in SOURCES},

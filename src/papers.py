@@ -67,9 +67,13 @@ SOURCES = [
     {"name": "네이버 D2", "region": "domestic", "feed": "https://d2.naver.com/d2.atom", "url": "https://d2.naver.com/home"},
     {"name": "우아한형제들", "region": "domestic", "feed": "https://techblog.woowahan.com/feed/", "url": "https://techblog.woowahan.com/"},
     {"name": "데보션 블로그", "region": "domestic", "feed": "https://devocean.sk.com/blog/rss.do", "url": "https://devocean.sk.com/blog/index.do?p=BLOG"},
+    {"name": "카카오", "region": "domestic", "feed": "https://tech.kakao.com/feed", "url": "https://tech.kakao.com/blog"},
+    {"name": "올리브영", "region": "domestic", "feed": "https://oliveyoung.tech/rss.xml", "url": "https://oliveyoung.tech/"},
+    {"name": "KT Cloud", "region": "domestic", "feed": "https://tech.ktcloud.com/feed", "url": "https://tech.ktcloud.com/"},
     # 해외
     {"name": "Cloudflare", "region": "international", "feed": "https://blog.cloudflare.com/rss/", "url": "https://blog.cloudflare.com/"},
     {"name": "Simon Willison", "region": "international", "feed": "https://simonwillison.net/atom/everything/", "url": "https://simonwillison.net/"},
+    {"name": "라인야후", "region": "international", "feed": "https://techblog.lycorp.co.jp/ja/feed/index.xml", "url": "https://techblog.lycorp.co.jp/ja"},
 ]
 
 # Slack 메시지당 블록 수 상한(50)에 안전 마진을 두고, 소스가 늘어나거나
