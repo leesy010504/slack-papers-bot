@@ -80,6 +80,14 @@ SOURCES = [
 # 특정 소스가 그날 유독 많이 올려도 메시지가 깨지지 않게 한다.
 MAX_POSTS = 20
 
+# 제목이 "condense-json 1.0"/"llm-mcp-client 0.1a0"처럼 버전 번호로 끝나면
+# 보통 자기 오픈소스 도구의 버전 공지지만, "Advancing the price-performance
+# frontier with GPT-5.6"처럼 다른 도구/모델을 분석하는 진짜 콘텐츠도 우연히
+# 버전 번호로 끝날 수 있다. 그래서 제목 패턴만으로 안 거르고, 본문까지 짧을
+# 때만(=진짜 한 줄 공지일 때만) 제외한다.
+VERSION_SUFFIX_RE = re.compile(r"\d+\.\d+[a-z]?\d*$")
+MIN_LENGTH_FOR_VERSIONED_TITLE = 1500
+
 # Gemini 무료 티어 분당 요청 수 한도(약 15RPM 추정)에 안 걸리게 요약 호출
 # 사이에 두는 최소 간격. 짧은 시간에 호출이 몰리면 즉시 에러 대신 응답이
 # 멈춰버려(Read timeout) 원인 파악이 어려우니, 애초에 몰리지 않게 막는다.
@@ -273,12 +281,15 @@ def fetch_recent_posts():
             if entry_dt is None or entry_dt < window_start:
                 continue
             title = entry.get("title", "(제목 없음)")
+            text = _extract_text(entry)
+            if VERSION_SUFFIX_RE.search(title) and len(text) < MIN_LENGTH_FOR_VERSIONED_TITLE:
+                continue
             target.append({
                 "source": source["name"],
                 "region": source["region"],
                 "title": title,
                 "link": entry.get("link", ""),
-                "text": _extract_text(entry),
+                "text": text,
             })
 
     yesterday_kst = (now_kst - timedelta(days=1)).date()
