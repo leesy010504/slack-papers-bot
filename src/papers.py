@@ -87,6 +87,17 @@ SUMMARIZE_INTERVAL_SECONDS = 4
 
 CATEGORIES = ["보안", "AI", "인프라", "백엔드", "프론트엔드", "기타"]
 
+# build_blocks에서 국내/해외 대신 주제별로 섹션을 나눌 때 쓰는 표시 라벨.
+# 소스는 국내/해외 상관없이 각 글 헤더의 [소스명]으로 이미 드러난다.
+CATEGORY_LABELS = {
+    "보안": "🔐 보안",
+    "AI": "🤖 AI",
+    "인프라": "🏗️ 인프라",
+    "백엔드": "⚙️ 백엔드",
+    "프론트엔드": "🎨 프론트엔드",
+    "기타": "📌 기타",
+}
+
 # Gemini가 지정한 6개 라벨을 벗어나 답할 때(영문 표기, 유사어 등) 그나마
 # 흔한 변형만 매핑해 보정한다. 그 외는 전부 "기타"로 떨어뜨린다.
 CATEGORY_ALIASES = {
@@ -406,26 +417,24 @@ def build_blocks(posts):
     # 헤더/요약과 국내 섹션 사이 여백. Block Kit엔 빈 블록이 없어 공백 한 칸으로 대신한다.
     blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": " "}})
 
-    domestic = [p for p in posts if p["region"] == "domestic"]
-    international = [p for p in posts if p["region"] == "international"]
+    groups = []
+    for category in CATEGORIES:
+        group = [p for p in posts if p["region"] != "news" and p.get("category", "기타") == category]
+        if group:
+            groups.append((CATEGORY_LABELS[category], group))
     news = [p for p in posts if p["region"] == "news"]
+    if news:
+        groups.append(("📰 데보션 뉴스", news))
 
-    for label, group in (("🇰🇷 국내", domestic), ("🌍 해외", international), ("📰 데보션 뉴스", news)):
-        if not group:
-            continue
+    for label, group in groups:
         blocks.append({
             "type": "section",
             "text": {"type": "mrkdwn", "text": f"*{label} · {len(group)}편*"},
         })
         for post in group:
             header = f"*[{post['source']}] <{post['link']}|{post['title']}>*"
-            if post["region"] == "news":
-                text = header
-            else:
-                category = post.get("category", "기타")
-                summary = post.get("summary", "")
-                header = f"{header}  `{category}`"
-                text = f"{header}\n\n{summary}" if summary else header
+            summary = post.get("summary", "")
+            text = f"{header}\n\n{summary}" if summary else header
             blocks.append({
                 "type": "section",
                 "text": {"type": "mrkdwn", "text": text},
