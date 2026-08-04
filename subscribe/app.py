@@ -3,8 +3,9 @@
 #
 # `/구독 주제 {값}`, `/구독 소스 {값}` 형태의 요청을 받아 DynamoDB에
 # 사용자별 구독 목록을 누적 저장한다. `/구독 해제 주제 {값}`으로 구독을
-# 뺄 수 있고, 값은 공백이나 쉼표로 여러 개를 한 번에 넘길 수 있다.
-# Slack Signing Secret으로 요청 출처를 검증한다.
+# 뺄 수 있고, `/구독 목록`으로 현재 구독 현황을 볼 수 있다. 값은 공백이나
+# 쉼표로 여러 개를 한 번에 넘길 수 있다. Slack Signing Secret으로 요청
+# 출처를 검증한다.
 #
 # 환경변수
 #   SLACK_SIGNING_SECRET  -- (필수) Slack 앱 Basic Information의 Signing Secret
@@ -116,11 +117,24 @@ def lambda_handler(event, context):
     user_id = form.get("user_id", "")
     text = form.get("text", "")
 
+    table = dynamodb.Table(os.environ["TABLE_NAME"])
+    key = f"{team_id}#{user_id}"
+
     usage = (
         f"사용법: `/구독 주제 {{{'|'.join(TOPICS)}}}` 또는 "
         f"`/구독 소스 {{{'|'.join(SOURCES)}}}` (쉼표나 공백으로 여러 개 가능)\n"
-        f"해제: `/구독 해제 주제 {{값}}` 또는 `/구독 해제 소스 {{값}}`"
+        f"해제: `/구독 해제 주제 {{값}}` 또는 `/구독 해제 소스 {{값}}`\n"
+        f"현재 구독 확인: `/구독 목록`"
     )
+
+    if text.strip() == "목록":
+        item = table.get_item(Key={"user_id": key}).get("Item", {})
+        topics = sorted(item.get("topics", []))
+        sources = sorted(item.get("sources", []))
+        return _respond(
+            f"현재 주제 구독: {', '.join(topics) or '없음'}\n"
+            f"현재 소스 구독: {', '.join(sources) or '없음'}"
+        )
 
     parsed = _parse_command_text(text)
     if parsed is None:
@@ -138,8 +152,6 @@ def lambda_handler(event, context):
     if not values:
         return _respond(usage)
 
-    table = dynamodb.Table(os.environ["TABLE_NAME"])
-    key = f"{team_id}#{user_id}"
     verb = "ADD" if action == "add" else "DELETE"
     item = table.update_item(
         Key={"user_id": key},
