@@ -70,6 +70,7 @@ SOURCES = [
     {"name": "카카오", "region": "domestic", "feed": "https://tech.kakao.com/feed", "url": "https://tech.kakao.com/blog"},
     {"name": "올리브영", "region": "domestic", "feed": "https://oliveyoung.tech/rss.xml", "url": "https://oliveyoung.tech/"},
     {"name": "KT Cloud", "region": "domestic", "feed": "https://tech.ktcloud.com/feed", "url": "https://tech.ktcloud.com/"},
+    {"name": "토스", "region": "domestic", "feed": "https://toss.tech/rss.xml", "url": "https://toss.tech/"},
     # 해외
     {"name": "Cloudflare", "region": "international", "feed": "https://blog.cloudflare.com/rss/", "url": "https://blog.cloudflare.com/"},
     {"name": "Simon Willison", "region": "international", "feed": "https://simonwillison.net/atom/everything/", "url": "https://simonwillison.net/"},
