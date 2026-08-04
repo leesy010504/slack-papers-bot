@@ -2,8 +2,8 @@
 # app -- Slack 슬래시 커맨드(/구독) 처리 Lambda
 #
 # `/구독 주제 {값}`, `/구독 소스 {값}` 형태의 요청을 받아 DynamoDB에
-# 사용자별 구독 목록을 누적 저장한다. Slack Signing Secret으로 요청
-# 출처를 검증한다.
+# 사용자별 구독 목록을 누적 저장한다. 값은 공백이나 쉼표로 여러 개를
+# 한 번에 넘길 수 있다. Slack Signing Secret으로 요청 출처를 검증한다.
 #
 # 환경변수
 #   SLACK_SIGNING_SECRET  -- (필수) Slack 앱 Basic Information의 Signing Secret
@@ -64,16 +64,29 @@ def _respond(text):
     }
 
 
-# 사용자 입력 text("주제 ai" 등)를 (kind, value)로 나눈다.
+# 사용자 입력 text("주제 ai" 등)를 (kind, raw_values)로 나눈다.
 # 형식이 안 맞으면 None을 반환해 사용법 안내로 이어지게 한다.
 def _parse_command_text(text):
     parts = text.strip().split(maxsplit=1)
     if len(parts) != 2:
         return None
-    kind, value = parts[0].strip(), parts[1].strip()
-    if kind not in VALID_KINDS or not value:
+    kind, raw_values = parts[0].strip(), parts[1].strip()
+    if kind not in VALID_KINDS or not raw_values:
         return None
-    return kind, value
+    return kind, raw_values
+
+
+# "AI 보안", "AI,보안", "네이버 D2,카카오" 처럼 섞어 쓴 값을 나눈다.
+# 쉼표가 있으면 쉼표로만 나눈다(소스명 중 "네이버 D2", "KT Cloud"처럼
+# 값 자체에 공백이 들어간 게 있어서, 공백 분리와 섞으면 깨진다). 쉼표가
+# 없으면 문자열 전체를 값 하나로 먼저 시도해 공백 포함 값도 살리고,
+# 그게 유효한 값이 아닐 때만 공백으로 나눈다.
+def _split_values(raw_values, attr):
+    if "," in raw_values:
+        return [v.strip() for v in raw_values.split(",") if v.strip()]
+    if raw_values.lower() in VALID_VALUES[attr]:
+        return [raw_values]
+    return raw_values.split()
 
 
 def lambda_handler(event, context):
@@ -92,32 +105,38 @@ def lambda_handler(event, context):
 
     usage = (
         f"사용법: `/구독 주제 {{{'|'.join(TOPICS)}}}` 또는 "
-        f"`/구독 소스 {{{'|'.join(SOURCES)}}}`"
+        f"`/구독 소스 {{{'|'.join(SOURCES)}}}` (쉼표나 공백으로 여러 개 가능)"
     )
 
     parsed = _parse_command_text(text)
     if parsed is None:
         return _respond(usage)
-    kind, raw_value = parsed
+    kind, raw_values = parsed
     attr = VALID_KINDS[kind]
 
-    value = VALID_VALUES[attr].get(raw_value.lower())
-    if value is None:
-        return _respond(f"`{raw_value}`는 지원하지 않는 값이에요.\n{usage}")
+    values, invalid = [], []
+    for raw_value in _split_values(raw_values, attr):
+        value = VALID_VALUES[attr].get(raw_value.lower())
+        (invalid if value is None else values).append(raw_value if value is None else value)
+
+    if invalid:
+        return _respond(f"`{', '.join(invalid)}`는 지원하지 않는 값이에요.\n{usage}")
+    if not values:
+        return _respond(usage)
 
     table = dynamodb.Table(os.environ["TABLE_NAME"])
     key = f"{team_id}#{user_id}"
     item = table.update_item(
         Key={"user_id": key},
         UpdateExpression=f"ADD {attr} :v",
-        ExpressionAttributeValues={":v": {value}},
+        ExpressionAttributeValues={":v": set(values)},
         ReturnValues="ALL_NEW",
     )["Attributes"]
 
     topics = sorted(item.get("topics", []))
     sources = sorted(item.get("sources", []))
     return _respond(
-        f"구독 등록 완료: {kind} `{value}`\n"
+        f"구독 등록 완료: {kind} `{', '.join(values)}`\n"
         f"현재 주제 구독: {', '.join(topics) or '없음'}\n"
         f"현재 소스 구독: {', '.join(sources) or '없음'}"
     )
