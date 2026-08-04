@@ -2,8 +2,9 @@
 # app -- Slack 슬래시 커맨드(/구독) 처리 Lambda
 #
 # `/구독 주제 {값}`, `/구독 소스 {값}` 형태의 요청을 받아 DynamoDB에
-# 사용자별 구독 목록을 누적 저장한다. 값은 공백이나 쉼표로 여러 개를
-# 한 번에 넘길 수 있다. Slack Signing Secret으로 요청 출처를 검증한다.
+# 사용자별 구독 목록을 누적 저장한다. `/구독 해제 주제 {값}`으로 구독을
+# 뺄 수 있고, 값은 공백이나 쉼표로 여러 개를 한 번에 넘길 수 있다.
+# Slack Signing Secret으로 요청 출처를 검증한다.
 #
 # 환경변수
 #   SLACK_SIGNING_SECRET  -- (필수) Slack 앱 Basic Information의 Signing Secret
@@ -64,16 +65,28 @@ def _respond(text):
     }
 
 
-# 사용자 입력 text("주제 ai" 등)를 (kind, raw_values)로 나눈다.
-# 형식이 안 맞으면 None을 반환해 사용법 안내로 이어지게 한다.
+# 사용자 입력 text("주제 ai", "해제 소스 당근,카카오" 등)를
+# (action, kind, raw_values)로 나눈다. 맨 앞 토큰이 "해제"면 구독 해제,
+# 아니면 구독 등록으로 본다. 형식이 안 맞으면 None을 반환해 사용법
+# 안내로 이어지게 한다.
 def _parse_command_text(text):
     parts = text.strip().split(maxsplit=1)
     if len(parts) != 2:
         return None
-    kind, raw_values = parts[0].strip(), parts[1].strip()
-    if kind not in VALID_KINDS or not raw_values:
+    first, rest = parts[0].strip(), parts[1].strip()
+
+    action = "add"
+    kind = first
+    if first == "해제":
+        action = "remove"
+        sub_parts = rest.split(maxsplit=1)
+        if len(sub_parts) != 2:
+            return None
+        kind, rest = sub_parts[0].strip(), sub_parts[1].strip()
+
+    if kind not in VALID_KINDS or not rest:
         return None
-    return kind, raw_values
+    return action, kind, rest
 
 
 # "AI 보안", "AI,보안", "네이버 D2,카카오" 처럼 섞어 쓴 값을 나눈다.
@@ -105,13 +118,14 @@ def lambda_handler(event, context):
 
     usage = (
         f"사용법: `/구독 주제 {{{'|'.join(TOPICS)}}}` 또는 "
-        f"`/구독 소스 {{{'|'.join(SOURCES)}}}` (쉼표나 공백으로 여러 개 가능)"
+        f"`/구독 소스 {{{'|'.join(SOURCES)}}}` (쉼표나 공백으로 여러 개 가능)\n"
+        f"해제: `/구독 해제 주제 {{값}}` 또는 `/구독 해제 소스 {{값}}`"
     )
 
     parsed = _parse_command_text(text)
     if parsed is None:
         return _respond(usage)
-    kind, raw_values = parsed
+    action, kind, raw_values = parsed
     attr = VALID_KINDS[kind]
 
     values, invalid = [], []
@@ -126,17 +140,19 @@ def lambda_handler(event, context):
 
     table = dynamodb.Table(os.environ["TABLE_NAME"])
     key = f"{team_id}#{user_id}"
+    verb = "ADD" if action == "add" else "DELETE"
     item = table.update_item(
         Key={"user_id": key},
-        UpdateExpression=f"ADD {attr} :v",
+        UpdateExpression=f"{verb} {attr} :v",
         ExpressionAttributeValues={":v": set(values)},
         ReturnValues="ALL_NEW",
     )["Attributes"]
 
     topics = sorted(item.get("topics", []))
     sources = sorted(item.get("sources", []))
+    action_label = "등록" if action == "add" else "해제"
     return _respond(
-        f"구독 등록 완료: {kind} `{', '.join(values)}`\n"
+        f"구독 {action_label} 완료: {kind} `{', '.join(values)}`\n"
         f"현재 주제 구독: {', '.join(topics) or '없음'}\n"
         f"현재 소스 구독: {', '.join(sources) or '없음'}"
     )
