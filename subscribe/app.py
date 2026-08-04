@@ -2,10 +2,11 @@
 # app -- Slack 슬래시 커맨드(/blog) 처리 Lambda
 #
 # `/blog 구독 주제 {값}`, `/blog 구독 소스 {값}` 형태의 요청을 받아
-# DynamoDB에 사용자별 구독 목록을 누적 저장한다. `/blog 해제 주제 {값}`으로
-# 구독을 뺄 수 있고, `/blog 목록`으로 현재 구독 현황을 볼 수 있다. 값은
-# 공백이나 쉼표로 여러 개를 한 번에 넘길 수 있다. Slack Signing Secret으로
-# 요청 출처를 검증한다.
+# DynamoDB에 사용자별 구독 목록을 누적 저장한다. 해제는 `/blog 해제 {값}`
+# 처럼 주제/소스 구분 없이 값만 넘기면 topics/sources 양쪽에서 찾아
+# 지운다("전체"처럼 두 쪽 모두에 있는 값은 둘 다 지운다). `/blog 목록`으로
+# 현재 구독 현황을 볼 수 있다. 값은 공백이나 쉼표로 여러 개를 한 번에
+# 넘길 수 있다. Slack Signing Secret으로 요청 출처를 검증한다.
 #
 # 환경변수
 #   SLACK_SIGNING_SECRET  -- (필수) Slack 앱 Basic Information의 Signing Secret
@@ -69,9 +70,11 @@ def _respond(text):
 ACTIONS = {"구독": "add", "해제": "remove"}
 
 
-# 사용자 입력 text("구독 주제 ai", "해제 소스 당근,카카오" 등)를
+# 사용자 입력 text("구독 주제 ai", "해제 당근,카카오" 등)를
 # (action, kind, raw_values)로 나눈다. 맨 앞 토큰이 "구독"/"해제"가 아니면
-# None을 반환해 사용법 안내로 이어지게 한다.
+# None을 반환해 사용법 안내로 이어지게 한다. "구독"은 그 다음에 주제/소스
+# 구분자가 필수지만, "해제"는 구분자 없이 값만 받는다(양쪽에서 다 찾아
+# 지우므로 굳이 구분할 필요가 없다).
 def _parse_command_text(text):
     parts = text.strip().split(maxsplit=1)
     if len(parts) != 2:
@@ -80,6 +83,9 @@ def _parse_command_text(text):
     if action_word not in ACTIONS:
         return None
     action = ACTIONS[action_word]
+
+    if action == "remove":
+        return action, None, rest
 
     sub_parts = rest.split(maxsplit=1)
     if len(sub_parts) != 2:
@@ -95,11 +101,13 @@ def _parse_command_text(text):
 # 쉼표가 있으면 쉼표로만 나눈다(소스명 중 "네이버 D2", "KT Cloud"처럼
 # 값 자체에 공백이 들어간 게 있어서, 공백 분리와 섞으면 깨진다). 쉼표가
 # 없으면 문자열 전체를 값 하나로 먼저 시도해 공백 포함 값도 살리고,
-# 그게 유효한 값이 아닐 때만 공백으로 나눈다.
-def _split_values(raw_values, attr):
+# 그게 유효한 값이 아닐 때만 공백으로 나눈다. is_valid로 어떤 사전을
+# 기준으로 "유효한 값"을 판단할지 호출부에서 결정한다(구독은 한 kind만,
+# 해제는 topics/sources 양쪽 다 인정).
+def _split_values(raw_values, is_valid):
     if "," in raw_values:
         return [v.strip() for v in raw_values.split(",") if v.strip()]
-    if raw_values.lower() in VALID_VALUES[attr]:
+    if is_valid(raw_values.lower()):
         return [raw_values]
     return raw_values.split()
 
@@ -124,7 +132,7 @@ def lambda_handler(event, context):
     usage = (
         f"사용법: `/blog 구독 주제 {{{'|'.join(TOPICS)}}}` 또는 "
         f"`/blog 구독 소스 {{{'|'.join(SOURCES)}}}` (쉼표나 공백으로 여러 개 가능)\n"
-        f"해제: `/blog 해제 주제 {{값}}` 또는 `/blog 해제 소스 {{값}}`\n"
+        f"해제: `/blog 해제 {{값}}` (주제/소스 구분 없이 값만, 여러 개 가능)\n"
         f"현재 구독 확인: `/blog 목록`"
     )
 
@@ -141,10 +149,54 @@ def lambda_handler(event, context):
     if parsed is None:
         return _respond(usage)
     action, kind, raw_values = parsed
-    attr = VALID_KINDS[kind]
 
+    if action == "remove":
+        values_by_attr = {"topics": [], "sources": []}
+        invalid = []
+        for raw_value in _split_values(
+            raw_values,
+            lambda v: v in VALID_VALUES["topics"] or v in VALID_VALUES["sources"],
+        ):
+            matched = False
+            for attr_name in ("topics", "sources"):
+                value = VALID_VALUES[attr_name].get(raw_value.lower())
+                if value is not None:
+                    values_by_attr[attr_name].append(value)
+                    matched = True
+            if not matched:
+                invalid.append(raw_value)
+
+        if invalid:
+            return _respond(f"`{', '.join(invalid)}`는 지원하지 않는 값이에요.\n{usage}")
+        # "전체"처럼 topics/sources 양쪽에 다 걸리는 값은 목록에 한 번만 보여준다.
+        removed = list(dict.fromkeys(values_by_attr["topics"] + values_by_attr["sources"]))
+        if not removed:
+            return _respond(usage)
+
+        expr_parts, expr_values = [], {}
+        for attr_name, attr_values in values_by_attr.items():
+            if attr_values:
+                expr_parts.append(f"{attr_name} :{attr_name}")
+                expr_values[f":{attr_name}"] = set(attr_values)
+
+        item = table.update_item(
+            Key={"user_id": key},
+            UpdateExpression="DELETE " + ", ".join(expr_parts),
+            ExpressionAttributeValues=expr_values,
+            ReturnValues="ALL_NEW",
+        )["Attributes"]
+
+        topics = sorted(item.get("topics", []))
+        sources = sorted(item.get("sources", []))
+        return _respond(
+            f"구독 해제 완료: `{', '.join(removed)}`\n"
+            f"현재 주제 구독: {', '.join(topics) or '없음'}\n"
+            f"현재 소스 구독: {', '.join(sources) or '없음'}"
+        )
+
+    attr = VALID_KINDS[kind]
     values, invalid = [], []
-    for raw_value in _split_values(raw_values, attr):
+    for raw_value in _split_values(raw_values, lambda v: v in VALID_VALUES[attr]):
         value = VALID_VALUES[attr].get(raw_value.lower())
         (invalid if value is None else values).append(raw_value if value is None else value)
 
@@ -153,19 +205,17 @@ def lambda_handler(event, context):
     if not values:
         return _respond(usage)
 
-    verb = "ADD" if action == "add" else "DELETE"
     item = table.update_item(
         Key={"user_id": key},
-        UpdateExpression=f"{verb} {attr} :v",
+        UpdateExpression=f"ADD {attr} :v",
         ExpressionAttributeValues={":v": set(values)},
         ReturnValues="ALL_NEW",
     )["Attributes"]
 
     topics = sorted(item.get("topics", []))
     sources = sorted(item.get("sources", []))
-    action_label = "등록" if action == "add" else "해제"
     return _respond(
-        f"구독 {action_label} 완료: {kind} `{', '.join(values)}`\n"
+        f"구독 등록 완료: {kind} `{', '.join(values)}`\n"
         f"현재 주제 구독: {', '.join(topics) or '없음'}\n"
         f"현재 소스 구독: {', '.join(sources) or '없음'}"
     )
