@@ -133,8 +133,12 @@ def lambda_handler(event, context):
         f"사용법: `/blog 구독 주제 {{{'|'.join(TOPICS)}}}` 또는 "
         f"`/blog 구독 소스 {{{'|'.join(SOURCES)}}}` (쉼표나 공백으로 여러 개 가능)\n"
         f"해제: `/blog 해제 {{값}}` (주제/소스 구분 없이 값만, 여러 개 가능)\n"
-        f"현재 구독 확인: `/blog 목록`"
+        f"현재 구독 확인: `/blog 목록`\n"
+        f"이 안내 다시 보기: `/blog help`"
     )
+
+    if text.strip().lower() == "help":
+        return _respond(usage)
 
     if text.strip() == "목록":
         item = table.get_item(Key={"user_id": key}).get("Item", {})
