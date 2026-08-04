@@ -1,11 +1,11 @@
 #
-# app -- Slack 슬래시 커맨드(/구독) 처리 Lambda
+# app -- Slack 슬래시 커맨드(/blog) 처리 Lambda
 #
-# `/구독 주제 {값}`, `/구독 소스 {값}` 형태의 요청을 받아 DynamoDB에
-# 사용자별 구독 목록을 누적 저장한다. `/구독 해제 주제 {값}`으로 구독을
-# 뺄 수 있고, `/구독 목록`으로 현재 구독 현황을 볼 수 있다. 값은 공백이나
-# 쉼표로 여러 개를 한 번에 넘길 수 있다. Slack Signing Secret으로 요청
-# 출처를 검증한다.
+# `/blog 구독 주제 {값}`, `/blog 구독 소스 {값}` 형태의 요청을 받아
+# DynamoDB에 사용자별 구독 목록을 누적 저장한다. `/blog 해제 주제 {값}`으로
+# 구독을 뺄 수 있고, `/blog 목록`으로 현재 구독 현황을 볼 수 있다. 값은
+# 공백이나 쉼표로 여러 개를 한 번에 넘길 수 있다. Slack Signing Secret으로
+# 요청 출처를 검증한다.
 #
 # 환경변수
 #   SLACK_SIGNING_SECRET  -- (필수) Slack 앱 Basic Information의 Signing Secret
@@ -66,24 +66,25 @@ def _respond(text):
     }
 
 
-# 사용자 입력 text("주제 ai", "해제 소스 당근,카카오" 등)를
-# (action, kind, raw_values)로 나눈다. 맨 앞 토큰이 "해제"면 구독 해제,
-# 아니면 구독 등록으로 본다. 형식이 안 맞으면 None을 반환해 사용법
-# 안내로 이어지게 한다.
+ACTIONS = {"구독": "add", "해제": "remove"}
+
+
+# 사용자 입력 text("구독 주제 ai", "해제 소스 당근,카카오" 등)를
+# (action, kind, raw_values)로 나눈다. 맨 앞 토큰이 "구독"/"해제"가 아니면
+# None을 반환해 사용법 안내로 이어지게 한다.
 def _parse_command_text(text):
     parts = text.strip().split(maxsplit=1)
     if len(parts) != 2:
         return None
-    first, rest = parts[0].strip(), parts[1].strip()
+    action_word, rest = parts[0].strip(), parts[1].strip()
+    if action_word not in ACTIONS:
+        return None
+    action = ACTIONS[action_word]
 
-    action = "add"
-    kind = first
-    if first == "해제":
-        action = "remove"
-        sub_parts = rest.split(maxsplit=1)
-        if len(sub_parts) != 2:
-            return None
-        kind, rest = sub_parts[0].strip(), sub_parts[1].strip()
+    sub_parts = rest.split(maxsplit=1)
+    if len(sub_parts) != 2:
+        return None
+    kind, rest = sub_parts[0].strip(), sub_parts[1].strip()
 
     if kind not in VALID_KINDS or not rest:
         return None
@@ -121,10 +122,10 @@ def lambda_handler(event, context):
     key = f"{team_id}#{user_id}"
 
     usage = (
-        f"사용법: `/구독 주제 {{{'|'.join(TOPICS)}}}` 또는 "
-        f"`/구독 소스 {{{'|'.join(SOURCES)}}}` (쉼표나 공백으로 여러 개 가능)\n"
-        f"해제: `/구독 해제 주제 {{값}}` 또는 `/구독 해제 소스 {{값}}`\n"
-        f"현재 구독 확인: `/구독 목록`"
+        f"사용법: `/blog 구독 주제 {{{'|'.join(TOPICS)}}}` 또는 "
+        f"`/blog 구독 소스 {{{'|'.join(SOURCES)}}}` (쉼표나 공백으로 여러 개 가능)\n"
+        f"해제: `/blog 해제 주제 {{값}}` 또는 `/blog 해제 소스 {{값}}`\n"
+        f"현재 구독 확인: `/blog 목록`"
     )
 
     if text.strip() == "목록":
