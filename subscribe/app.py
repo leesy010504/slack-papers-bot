@@ -39,6 +39,26 @@ VALID_VALUES = {
 dynamodb = boto3.resource("dynamodb")
 
 
+# Slack 코드블록은 등폭 폰트라 표처럼 정렬해 보여줄 수 있다. 다만 한글
+# 음절은 폭이 영문자의 2배로 렌더링되는 게 보통이라, len()만으로 패딩하면
+# 한글/영문이 섞였을 때 열이 어긋난다. 그래서 한글 음절은 너비 2로 세서
+# 패딩 폭을 계산한다.
+def _display_width(s):
+    width = 0
+    for ch in s:
+        width += 2 if "가" <= ch <= "힣" else 1
+    return width
+
+
+def _format_grid(values, columns):
+    col_width = max(_display_width(v) for v in values)
+    rows = []
+    for i in range(0, len(values), columns):
+        cells = [v + " " * (col_width - _display_width(v)) for v in values[i:i + columns]]
+        rows.append("  ".join(cells).rstrip())
+    return "```\n" + "\n".join(rows) + "\n```"
+
+
 def _verify_slack_signature(headers, body):
     signing_secret = os.environ["SLACK_SIGNING_SECRET"]
     headers = {k.lower(): v for k, v in headers.items()}
@@ -129,13 +149,15 @@ def lambda_handler(event, context):
     table = dynamodb.Table(os.environ["TABLE_NAME"])
     key = f"{team_id}#{user_id}"
 
-    usage = (
-        f"사용법: `/blog 구독 주제 {{{'|'.join(TOPICS)}}}` 또는 "
-        f"`/blog 구독 소스 {{{'|'.join(SOURCES)}}}` (쉼표나 공백으로 여러 개 가능)\n"
-        f"해제: `/blog 해제 {{값}}` (주제/소스 구분 없이 값만, 여러 개 가능)\n"
-        f"현재 구독 확인: `/blog 목록`\n"
-        f"이 안내 다시 보기: `/blog help`"
-    )
+    usage = "\n".join([
+        "`/blog 구독 주제 {값}` - 주제 구독 등록 (쉼표나 공백으로 여러 개 가능)",
+        _format_grid(TOPICS, columns=4),
+        "`/blog 구독 소스 {값}` - 소스 구독 등록",
+        _format_grid(SOURCES, columns=3),
+        "`/blog 해제 {값}` - 구독 해제 (주제/소스 구분 없이 값만, 여러 개 가능)",
+        "`/blog 목록` - 현재 구독 현황 확인",
+        "`/blog help` - 이 도움말 보기",
+    ])
 
     if text.strip().lower() == "help":
         return _respond(usage)
