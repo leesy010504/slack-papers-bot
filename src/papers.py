@@ -71,6 +71,11 @@ SOURCES = [
     {"name": "올리브영", "region": "domestic", "feed": "https://oliveyoung.tech/rss.xml", "url": "https://oliveyoung.tech/"},
     {"name": "KT Cloud", "region": "domestic", "feed": "https://tech.ktcloud.com/feed", "url": "https://tech.ktcloud.com/"},
     {"name": "토스", "region": "domestic", "feed": "https://toss.tech/rss.xml", "url": "https://toss.tech/"},
+    {"name": "쏘카", "region": "domestic", "feed": "https://tech.socarcorp.kr/rss.xml", "url": "https://tech.socarcorp.kr/"},
+    {"name": "삼성전자", "region": "domestic", "feed": "https://techblog.samsung.com/rss", "url": "https://techblog.samsung.com/"},
+    {"name": "컬리", "region": "domestic", "feed": "https://helloworld.kurly.com/rss.xml", "url": "https://helloworld.kurly.com/"},
+    {"name": "데브시스터즈", "region": "domestic", "feed": "https://tech.devsisters.com/rss.xml", "url": "https://tech.devsisters.com/"},
+    {"name": "AWS", "region": "domestic", "feed": "https://aws.amazon.com/ko/blogs/tech/feed/", "url": "https://aws.amazon.com/ko/blogs/tech/"},
     # 해외
     {"name": "Cloudflare", "region": "international", "feed": "https://blog.cloudflare.com/rss/", "url": "https://blog.cloudflare.com/"},
     {"name": "Simon Willison", "region": "international", "feed": "https://simonwillison.net/atom/everything/", "url": "https://simonwillison.net/"},
