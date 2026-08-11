@@ -153,9 +153,12 @@ def lambda_handler(event, context):
     usage = "\n".join([
         "`/blog 구독 주제 {값}` - 주제 구독 등록 (쉼표나 공백으로 여러 개 가능)",
         _format_grid(TOPICS, columns=4),
+        "예시: `/blog 구독 주제 AI 백엔드`",
         "`/blog 구독 소스 {값}` - 소스 구독 등록",
         _format_grid(SOURCES, columns=3),
+        "예시: `/blog 구독 소스 네이버 D2, 카카오`",
         "`/blog 해제 {값}` - 구독 해제 (주제/소스 구분 없이 값만, 여러 개 가능)",
+        "예시: `/blog 해제 AI, 카카오`",
         "`/blog 목록` - 현재 구독 현황 확인",
         "`/blog help` - 이 도움말 보기",
     ])
