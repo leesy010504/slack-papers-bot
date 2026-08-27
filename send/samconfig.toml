@@ -1,0 +1,13 @@
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "slack-papers-send"
+resolve_s3 = true
+s3_prefix = "slack-papers-send"
+region = "ap-northeast-2"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+image_repositories = []
+
+[default.global.parameters]
+region = "ap-northeast-2"

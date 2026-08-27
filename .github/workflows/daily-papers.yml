@@ -1,8 +1,8 @@
 name: Daily Papers to Slack
 
+# 정기 실행은 EventBridge Scheduler(send/template.yaml, Lambda)가 담당한다.
+# 이 워크플로우는 수동 실행(workflow_dispatch) 전용으로만 남긴다.
 on:
-  schedule:
-    - cron: "0 22 * * 0-4"
   workflow_dispatch: {}
 
 jobs:

@@ -1,0 +1,71 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: 일일 개발 블로그 Slack 발송 (평일 08:00 KST EventBridge 스케줄)
+
+Parameters:
+  SlackBotToken:
+    Type: String
+    NoEcho: true
+    Description: Slack Bot User OAuth Token (xoxb-)
+  SlackChannel:
+    Type: String
+    Default: "#ai-papers"
+    Description: 채널 브로드캐스트 대상
+  GeminiApiKey:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: Gemini API Key (비워두면 요약 없이 본문 일부만 발송)
+  GeminiModel:
+    Type: String
+    Default: "gemini-flash-lite-latest"
+  SubscriptionsTableName:
+    Type: String
+    Default: ""
+    Description: subscribe 스택(slack-papers-subscribe)이 만든 구독 정보 테이블 이름. 비워두면 구독자 DM 없이 채널 발송만 한다.
+
+Conditions:
+  HasSubscriptionsTable: !Not [!Equals [!Ref SubscriptionsTableName, ""]]
+
+Globals:
+  Function:
+    Runtime: python3.11
+    # 국내/해외 피드 수집 + Gemini 요약(최대 20건, 건당 최대 60s)까지
+    # 감안한 여유값. GitHub Actions 대비 지연 없이 정시 실행되는 게 핵심이라
+    # 실행 자체가 오래 걸리는 건 별개 문제다.
+    Timeout: 600
+    MemorySize: 512
+
+Resources:
+  SendFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../src
+      Handler: send.lambda_handler
+      Environment:
+        Variables:
+          SLACK_BOT_TOKEN: !Ref SlackBotToken
+          SLACK_CHANNEL: !Ref SlackChannel
+          GEMINI_API_KEY: !Ref GeminiApiKey
+          GEMINI_MODEL: !Ref GeminiModel
+          SUBSCRIPTIONS_TABLE: !Ref SubscriptionsTableName
+      Policies:
+        - !If
+          - HasSubscriptionsTable
+          - Statement:
+              - Effect: Allow
+                Action: dynamodb:Scan
+                Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${SubscriptionsTableName}"
+          - !Ref AWS::NoValue
+      Events:
+        DailySchedule:
+          Type: Schedule
+          Properties:
+            # UTC 23:00 일~목 = KST 08:00 월~금. GitHub Actions 스케줄 큐
+            # 지연(정각 혼잡)을 피하려고 EventBridge로 트리거를 옮겼다.
+            Schedule: "cron(0 23 ? * SUN-THU *)"
+            Enabled: true
+
+Outputs:
+  SendFunctionName:
+    Value: !Ref SendFunction
