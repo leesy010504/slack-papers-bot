@@ -1,9 +1,10 @@
 #
 # send -- 일일 개발 블로그 발송 진입점
 #
-# GitHub Actions 스케줄러가 평일 아침(KST)에 실행하는 스크립트.
-# 블로그 글을 가져와 요약하고 Slack에 발송한 뒤 결과를 표준출력에 남긴다.
-# 실패 시 exit code 1을 반환해 워크플로가 실패로 표시되도록 한다.
+# EventBridge Scheduler(send/template.yaml)가 평일 아침(KST)에 호출하는
+# Lambda(lambda_handler) 또는 CLI(__main__)로 실행된다. 블로그 글을 가져와
+# 요약하고 Slack에 발송한 뒤 결과를 표준출력에 남긴다. CLI 실행 시 실패하면
+# exit code 1을 반환한다.
 #
 # 작성자: 이상윤
 #
@@ -25,6 +26,8 @@
 #               있어 코드에서도 한 번 더 막는다
 #   2026-07-31  /구독 사용자에게 주제·소스로 필터링한 DM 추가 발송.
 #               채널 브로드캐스트는 그대로 두고, 구독자에게만 추가로 감
+#   2026-08-27  lambda_handler 추가. GitHub Actions 정각 스케줄 지연을 피해
+#               EventBridge Scheduler + Lambda로 실행 주체 이전(send/)
 #
 
 import os
@@ -79,6 +82,13 @@ def main():
     print(f"발송 완료: {len(posts)}편 (ts={ts})")
 
     _send_subscriber_dms(posts)
+
+
+# EventBridge Scheduler(send/template.yaml)가 매일 아침(KST) 호출하는 진입점.
+# 예외를 여기서 삼키지 않고 그대로 올려 Lambda 호출이 실패로 기록되게 한다.
+def lambda_handler(event, context):
+    main()
+    return {"statusCode": 200, "body": "ok"}
 
 
 if __name__ == "__main__":

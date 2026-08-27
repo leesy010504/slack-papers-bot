@@ -76,6 +76,7 @@ SOURCES = [
     {"name": "컬리", "region": "domestic", "feed": "https://helloworld.kurly.com/rss.xml", "url": "https://helloworld.kurly.com/"},
     {"name": "데브시스터즈", "region": "domestic", "feed": "https://tech.devsisters.com/rss.xml", "url": "https://tech.devsisters.com/"},
     {"name": "AWS", "region": "domestic", "feed": "https://aws.amazon.com/ko/blogs/tech/feed/", "url": "https://aws.amazon.com/ko/blogs/tech/"},
+    {"name": "넥스트리", "region": "domestic", "feed": "https://www.nextree.io/tag/blog/rss/", "url": "https://www.nextree.io/tag/blog/"},
     # 해외
     {"name": "Cloudflare", "region": "international", "feed": "https://blog.cloudflare.com/rss/", "url": "https://blog.cloudflare.com/"},
     {"name": "Simon Willison", "region": "international", "feed": "https://simonwillison.net/atom/everything/", "url": "https://simonwillison.net/"},

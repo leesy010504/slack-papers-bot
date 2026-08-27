@@ -1,0 +1,4 @@
+# boto3는 Lambda 파이썬 런타임에 기본 포함되어 있어 별도 설치가 필요 없다.
+feedparser>=6.0.11
+requests>=2.32.0
+python-dotenv>=1.0.0
