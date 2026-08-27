@@ -30,10 +30,8 @@ Conditions:
 Globals:
   Function:
     Runtime: python3.11
-    # 국내/해외 피드 수집 + Gemini 요약(최대 20건, 건당 최대 60s)까지
-    # 감안한 여유값. GitHub Actions 대비 지연 없이 정시 실행되는 게 핵심이라
-    # 실행 자체가 오래 걸리는 건 별개 문제다.
-    Timeout: 600
+    # 국내/해외 피드 수집 + Gemini 요약(최대 20건, 건당 최대 90s)까지
+    Timeout: 900
     MemorySize: 512
 
 Resources:
